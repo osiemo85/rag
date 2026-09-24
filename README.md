@@ -83,7 +83,21 @@ uv run python agent_rag_with_faq_func.py
 
 ## Project files
 
-- `agentic_ingest.py` — ingest websites, inspect memories, and query the local vector database.
-- `agent_rag_with_faq_func.py` — query the vector database with an additional FAQ lookup tool.
+### `agentic_ingest.py`
+
+This is the website knowledge-management script. It has three functions:
+
+- `get_content()` fetches each URL in `INGEST_URLS`, extracts useful information, and stores it in the local Qdrant database.
+- `read_content()` lists the documents currently saved in that database.
+- `chat(message)` answers a question using only the information retrieved from the stored website content.
+
+Use this file first to build or update the local knowledge base, then use its `chat` function to test questions about the ingested website.
+
+### `agent_rag_with_faq_func.py`
+
+This is the FAQ-enabled chat script. Like `agentic_ingest.py`, it searches the local Qdrant database, but it also reads `knowledge/faq.jsonl` and provides the model with an FAQ lookup tool. When a question matches an FAQ, the agent can retrieve and return the saved answer directly; for other questions, it uses vector search over the stored memories.
+
+Use this file when you want answers from both the website knowledge base and the curated FAQ data.
+
 - `knowledge/faq.jsonl` — FAQ source data.
 - `knowledge/vectordb/` — generated local Qdrant data; do not commit it.
