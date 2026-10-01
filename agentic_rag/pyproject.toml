@@ -4,6 +4,10 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
     "ipython>=9.17.1",
+    # The Fetch MCP server currently uses the MCP 1.x SDK.  MCP 2.x probes
+    # servers with `server/discover`, which makes this legacy stdio server
+    # close before initialization.
+    "mcp>=1.19.0,<2",
     "openai-agents[litellm]>=0.22.3",
     "python-dotenv>=1.2.3",
     "qdrant-client>=1.19.1",

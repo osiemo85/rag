@@ -15,7 +15,7 @@ MODEL_NAME = "cerebras/gpt-oss-120b"
 COLLECTION_NAME = "knowledge"
 KNOWLEDGE_DIR = Path.cwd() / "knowledge"
 VECTORDB_PATH = KNOWLEDGE_DIR / "vectordb"
-INGEST_URLS = ["https://www.agentrixx.com"] * 3
+INGEST_URLS = ["https://www.agentrixx.com"] * 4
 
 
 def get_model() -> LitellmModel:
@@ -100,8 +100,8 @@ async def read_content() -> None:
     )
     for index, point in enumerate(points, 1):
         document = (point.payload or {}).get("document", "")
-        preview = document.replace("\n", " ")[:160]
-        suffix = "..." if len(document) > 160 else ""
+        preview = document.replace("\n", " ")[:300]
+        suffix = "..." if len(document) > 300 else ""
         print(f"{index:>3}. {preview}{suffix}")
 
     client.close()
@@ -119,4 +119,6 @@ async def chat(message: str) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(chat("What 4 services does Agentrixx offer and what are the 4 steps on how Agentrixx works?"))
+    # asyncio.run(chat("What 4 services does Agentrixx offer and what are the 4 steps on how Agentrixx works?"))
+    # asyncio.run(chat("What 4 services does Agentrixx offer and what are the 4 steps on how Agentrixx works?"))
+    asyncio.run(read_content())
