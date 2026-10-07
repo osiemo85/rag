@@ -7,5 +7,12 @@ requires-python = ">=3.13"
 dependencies = [
     "llama-index>=0.14.25",
     "llama-index-llms-cerebras>=0.5.0",
+    "litellm>=1.83.0,<1.84",
+    "mcp>=1.19.0,<2",
+    "openai>=2.26.0,<2.27",
+    "openai-agents[litellm]>=0.14.1,<0.15",
+    "python-dotenv>=1.2.4",
+    "resend>=2.49.1",
     "sendgrid>=6.12.5",
+    "streamlit>=1.40.0",
 ]

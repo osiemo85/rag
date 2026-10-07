@@ -5,6 +5,7 @@ import os
 import re
 from functools import lru_cache
 from html.parser import HTMLParser
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -12,6 +13,8 @@ from urllib.request import Request, urlopen
 from dotenv import load_dotenv
 from llama_index.core import Settings, StorageContext, load_index_from_storage
 from llama_index.llms.cerebras import Cerebras
+import resend
+from resend.exceptions import ResendError
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
@@ -37,25 +40,43 @@ def _service_index():
 
 
 def get_our_services(prompt: str) -> str:
-    """Search Agentrixx's services knowledge base for relevant information.
+    """Search Agentrixx's services and projects knowledge base for relevant information.
 
     Args:
-        prompt (str): A prospect's question, business need, or pain point.
+        prompt (str): Short precise prompt of about 7 words.
 
     Returns:
         str: Relevant service information or a readable search error.
     """
+    print(f"------------get_our_services called with prompt: {prompt}--------------")
     if not prompt.strip():
         return "Please provide a question about our services."
 
     try:
         query_engine = _service_index().as_query_engine()
+        # print(f'----query output: {query_engine.query(prompt)} ----')
         return str(query_engine.query(prompt))
     except Exception as error:
         return f"Unable to search the services knowledge base: {error}"
 
 
+async def search_services_and_projects(prompt: str) -> str:
+    """Retrieve Agentrixx services and projects from the local source document.
 
+    Args:
+        prompt (str): The question or business need to look up.
+
+    Returns:
+        str: The source document containing actual services and projects, or an error.
+    """
+    if not prompt.strip():
+        return "Please provide a question about Agentrixx services or projects."
+
+    document_path = Path(__file__).resolve().parent / "data" / "agentrixx_service_document.md"
+    try:
+        return document_path.read_text(encoding="utf-8")
+    except OSError as error:
+        return f"Unable to read the services document: {error}"
 class _TextExtractor(HTMLParser):
     """Extract visible text from simple HTML pages."""
 
@@ -86,6 +107,7 @@ def scrape_prospect_website(url: str) -> str:
     Returns:
         str: Up to 6,000 characters of website text or a readable fetch error.
     """
+    print(f"--------------scrape_prospect_website called once with url: {url}.................")
     parsed_url = urlparse(url)
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
         return "Error: provide a full public URL beginning with http:// or https://."
@@ -114,7 +136,7 @@ def scrape_prospect_website(url: str) -> str:
 
 
 def notify_sales_team(subject: str, body: str) -> str:
-    """Send a qualified-lead email to the configured sales inbox through SendGrid.
+    """Send Agentrixx sales team an email notifying them of a qualified lead.
 
     Args:
         subject (str): A concise subject describing the qualified lead.
@@ -124,11 +146,61 @@ def notify_sales_team(subject: str, body: str) -> str:
     Returns:
         str: A delivery confirmation or a readable configuration or delivery error.
     """
+    print(f"--------------notify_sales_team called with subject: {subject} and body: {body}.................")
+    to_email = os.getenv("TO_EMAIL")
+    if not to_email:
+        return "Error: TO_EMAIL must be configured."
+    return _send_email(to_email, subject, body, "the sales team has been notified")
+
+
+def send_email_to_client(client_email: str, subject: str, body: str) -> str:
+    """Email a prospective client after their needs match an Agentrixx service.
+
+    Args:
+        client_email (str): The email address supplied by the prospective client.
+        subject (str): A concise subject about the relevant service.
+        body (str): A personalized HTML message summarizing the match and next steps.
+
+    Returns:
+        str: A delivery confirmation or a readable configuration or delivery error.
+    """
+    print(f"--------------send_email_to_client called with client_email: {client_email}, subject: {subject} and body: {body}.................")
+    client_email = client_email.strip()
+    if not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", client_email):
+        return "Error: provide a valid client email address."
+    if not subject.strip() or not body.strip():
+        return "Error: subject and body must not be empty."
+    return _send_email(client_email, subject, body, "the client email has been sent")
+
+
+def _send_email(to_email: str, subject: str, body: str, success_description: str) -> str:
+    """Send an HTML email using the configured provider."""
+    if os.getenv("USE_RESEND", "false").strip().lower() == "true":
+        api_key = os.getenv("RESEND_API_KEY")
+        from_email = os.getenv("RESEND_FROM_EMAIL")
+        if not all([api_key, from_email]):
+            return "Error: RESEND_API_KEY and RESEND_FROM_EMAIL must be configured."
+        params: resend.Emails.SendParams = {
+            "from": from_email,
+            "to": [to_email],
+            "subject": subject,
+            "html": body,
+        }
+        resend.api_key = api_key
+        try:
+            email = resend.Emails.send(params)
+            return f"Success: {success_description} (message ID: {email['id']})."
+        except ResendError as error:
+            message = str(error).replace(api_key, "[redacted]")[:500]
+            return f"Error: Resend returned HTTP {error.code}: {message}"
+        except Exception as error:
+            message = str(error).replace(api_key, "[redacted]")[:500]
+            return f"Error: could not send email through Resend ({message})."
+
     api_key = os.getenv("SENDGRID_API_KEY")
     from_email = os.getenv("SENDGRID_FROM_EMAIL")
-    to_email = os.getenv("TO_EMAIL")
-    if not all([api_key, from_email, to_email]):
-        return "Error: SENDGRID_API_KEY, SENDGRID_FROM_EMAIL, and TO_EMAIL must be configured."
+    if not all([api_key, from_email]):
+        return "Error: SENDGRID_API_KEY and SENDGRID_FROM_EMAIL must be configured."
 
     message = Mail(
         from_email=from_email,
@@ -138,10 +210,15 @@ def notify_sales_team(subject: str, body: str) -> str:
     )
     try:
         response = SendGridAPIClient(api_key).send(message)
-        return f"Success: the sales team has been notified (HTTP {response.status_code})."
+        return f"Success: {success_description} (HTTP {response.status_code})."
     except Exception as error:
         return f"Error: could not send email through SendGrid ({error})."
 
 if __name__ == "__main__":
+    import asyncio
+
     # print(notify_sales_team("Company info here", "Matched services here"))
-    print(scrape_prospect_website("https://citizen.digital"))
+    # print(scrape_prospect_website("https://stscholastica.co.ke"))
+    # print(notify_sales_team("Company info here", "Matched services here"))
+    # print(get_our_services("Property management digital solutions.  Respond in 70 words only"))
+    print(asyncio.run(search_services_and_projects("Property management digital solutions.  Respond in 70 words only")))
